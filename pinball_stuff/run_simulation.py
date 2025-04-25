@@ -124,15 +124,37 @@ def run_simulation(sim_config):
     return (pinball_errors, mwpm_errors, pinball_only_errors, num_complex, num_all_zeros, both_failures, pinball_only_failures, mwpm_only_failures)
 
 
+def syndrome_to_stim_idx(syndrome_idx, d):
+    '''
+    Converts index of x-basis syndrome to index within stim shot (which includes both x and z measurements)
+
+    Parameters:
+        syndrome_idx (int): Index of x-basis syndrome
+        d (int): Distance of surface code
+
+    Returns:
+        stim_idx (int): Index within stim shot
+    '''
+    rows = d + 1
+    cols = (d-1) // 2
+    if syndrome_idx < (d**2-1)/2:
+        return syndrome_idx
+    elif syndrome_idx >= rows * cols - (d**2-1)/2:
+        return rows * cols + syndrome_idx
+    
+    k1 = syndrome_idx - cols
+    k2 = k1 // cols
+    k3 = k2 * d
+    k4 = k1 % cols
+    return k3 + k4 * 2 + cols + 1
 
 def run_stim_simulation(sim_config, syndromes, num_rounds, num_shots):
     d = sim_config.distance
     batch_size = sim_config.batch_size
-    
     # Syndrome array dimensions
     num_syndrome_rows = d + 1
-    num_syndrome_cols = d**2-1
-
+    num_syndrome_cols = (d - 1) // 2
+    
     # Simulation output statistics
     num_complex = 0 # Number of complex syndrome batches
     num_all_zeros = 0 # Number of syndrome batches that had no active syndromes
@@ -143,7 +165,15 @@ def run_stim_simulation(sim_config, syndromes, num_rounds, num_shots):
     for shot in range(num_shots):
         
         # Pull out a batch of syndrome/error rounds
-        syndrome_batch = syndromes[shot].reshape(num_rounds, d**2-1)
+        raw_syndrome_batch = syndromes[shot]
+
+        # process raw stim syndrome into only the x-basis syndromes
+        syndrome_batch = np.zeros((batch_size, num_syndrome_rows*num_syndrome_cols), dtype=np.uint8)
+        for round in range(batch_size):
+            for stab in range(num_syndrome_rows*num_syndrome_cols):
+                    i = round * (num_syndrome_rows*num_syndrome_cols) + stab
+                    syndrome_batch[round, stab] = raw_syndrome_batch[syndrome_to_stim_idx(i, d)]
+        
         
         # If the batch is all zeros, both Pinball and MWPM will definitely succeed, so skip
         if not np.any(syndrome_batch):
@@ -203,13 +233,13 @@ import stim
 
 def run_coverage_simulation(distances, error_rates, num_shots):
     complex_count_map = []
-    for p in phen_errors:
+    for p in error_rates:
         print(f"Starting Noise Level {p}")
         complex_errors_d = []
         for d in distances:
             num_rounds = d
             print(f"Starting Distance {d}")
-            sim = SimConfig(distance=d, error_rate=p, batch_size=num_rounds*(d**2-1), num_batches=num_shots, thread_id=0)
+            sim = SimConfig(distance=d, error_rate=p, batch_size=d, num_batches=num_shots, thread_id=0)
             circ = stim.Circuit.generated(
                 "surface_code:rotated_memory_x",
                 rounds=num_rounds,
@@ -226,7 +256,7 @@ def run_coverage_simulation(distances, error_rates, num_shots):
         complex_count_map.append(complex_errors_d)
 
     percent_on_chip_map = [[100 - (count / num_shots) * 100 for count in counts] for counts in complex_count_map]
-    return percent_on_chip_map
+    return percent_on_chip_map  
 
 import matplotlib.pyplot as plt
 
@@ -250,7 +280,7 @@ plt.xticks(distances, fontsize=12)
 plt.yticks(fontsize=12)
 
 # Save the plot to a file
-plt.savefig("circuit_level_coverage.png")
+plt.savefig("phen_coverage_d_rounds.png")
 
 
         

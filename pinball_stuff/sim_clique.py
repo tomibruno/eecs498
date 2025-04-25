@@ -273,37 +273,14 @@ def baseline_clique(syndrome, distance, trial_num):
 
     return (output_array,iscomplex)
 
-def syndrome_to_stim_idx(syndrome_idx, d):
-    '''
-    Converts index of x-basis syndrome to index within stim shot (which includes both x and z measurements)
-
-    Parameters:
-        syndrome_idx (int): Index of x-basis syndrome
-        d (int): Distance of surface code
-
-    Returns:
-        stim_idx (int): Index within stim shot
-    '''
-    rows = d + 1
-    cols = (d-1) // 2
-    if syndrome_idx < cols:
-        return syndrome_idx
-    elif syndrome_idx >= rows * cols - cols:
-        return rows * cols + syndrome_idx
-    
-    k1 = syndrome_idx - cols
-    k2 = k1 // cols
-    k3 = k2 * d
-    k4 = k1 % cols
-    return k3 + k4 * 2 + cols + 1
 
 def clear_measurement_errors(prev_round, curr_round, num_rows, num_cols, d):
     for k in range(num_rows):
         for l in range(num_cols):
             inx = (k*num_cols) + l
-            andval = curr_round[syndrome_to_stim_idx(inx, d)] & prev_round[syndrome_to_stim_idx(inx, d)]
-            curr_round[syndrome_to_stim_idx(inx, d)] ^= andval
-            prev_round[syndrome_to_stim_idx(inx, d)] ^= andval
+            andval = curr_round[inx] & prev_round[inx]
+            curr_round[inx] ^= andval
+            prev_round[inx] ^= andval
 
 def pinball_clique_late_meas(prev_syndrome, curr_syndrome, distance, trial_num):
     #decoder decodes syndrome bits (this is the new version of clique (the pinball clique)
@@ -362,19 +339,19 @@ def pinball_clique_late_meas(prev_syndrome, curr_syndrome, distance, trial_num):
                 data_inx = (data_row_index * distance) + data_col_index
 
                 # Logic to avoid measurement errors being propagated to decoder
-                value1 = curr_syndrome[syndrome_to_stim_idx(center_inx, distance)] # this has to exist
+                value1 = curr_syndrome[center_inx] # this has to exist
 
                 if 0 <= parity_row_index < num_syndrome_rows and 0 <= parity_col_index < num_syndrome_cols:
-                    value2 = curr_syndrome[syndrome_to_stim_idx(neighbor_inx, distance)]
+                    value2 = curr_syndrome[neighbor_inx]
                 else:
                     value2 = -1 #due to clockwise this is okay
 
                 if(0 <= data_row_index < distance and 0 <= data_col_index < distance and value2 != -1):
                     andval = value1 & value2
                     output_array[data_inx] ^= andval
-                    curr_syndrome[syndrome_to_stim_idx(center_inx, distance)] ^= andval
+                    curr_syndrome[center_inx] ^= andval
                     if 0 <= parity_row_index < num_syndrome_rows and 0 <= parity_col_index < num_syndrome_cols:
-                        curr_syndrome[syndrome_to_stim_idx(neighbor_inx, distance)] ^= andval   
+                        curr_syndrome[neighbor_inx] ^= andval   
                         
                 # in general we would want to do this stage later because it only consumes one syndrome for an error 
                 # it doesnt really matter here because this never steals from the above i.e. a 2 is always a 2.
@@ -382,9 +359,9 @@ def pinball_clique_late_meas(prev_syndrome, curr_syndrome, distance, trial_num):
                     value2=1
                     andval = value1 & value2
                     output_array[data_inx] ^= andval
-                    curr_syndrome[syndrome_to_stim_idx(center_inx, distance)] ^= andval
+                    curr_syndrome[center_inx] ^= andval
                     if 0 <= parity_row_index < num_syndrome_rows and 0 <= parity_col_index < num_syndrome_cols:
-                        curr_syndrome[syndrome_to_stim_idx(neighbor_inx, distance)] ^= andval                           
+                        curr_syndrome[neighbor_inx] ^= andval                           
 
                 ## These last lines effectively make this a 4-stage pipeline in order to avoid combinational loops
             
@@ -396,13 +373,13 @@ def pinball_clique_late_meas(prev_syndrome, curr_syndrome, distance, trial_num):
 
         center_inx = i*num_syndrome_cols + j
 
-        value1 = curr_syndrome[syndrome_to_stim_idx(center_inx, distance)]
+        value1 = curr_syndrome[center_inx]
         if(value1):
             #BR should always work
             data_col_index = distance-1
             data_row_index = i
             output_array[(data_row_index*distance) + data_col_index] ^= 1
-            curr_syndrome[syndrome_to_stim_idx(center_inx, distance)] ^= 1
+            curr_syndrome[center_inx] ^= 1
 
     # Measurement errors
     clear_measurement_errors(prev_syndrome, curr_syndrome, num_syndrome_rows, num_syndrome_cols, distance)
